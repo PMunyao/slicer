@@ -1,0 +1,17 @@
+version: '3'
+services:
+  slic3r:
+    build:.
+    ports:
+      - "5001:5001"
+    volumes:
+      -./app:/app
+    depends_on:
+      - bambu-cli
+
+  bambu-cli:
+    image: bambu-cli:latest
+    ports:
+      - "5002:5002"
+    volumes:
+      -./app:/app
