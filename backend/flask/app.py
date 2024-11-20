@@ -12,6 +12,16 @@ SLICER_IMAGE = "slic3r:latest"
 # Set the path to the temporary directory for storing model files
 TMP_DIR = "/tmp"
 
+# Default config.ini template
+CONFIG_TEMPLATE = """
+[general]
+bed_temperature = {bed_temperature}
+extrusion_temperature = {extrusion_temperature}
+layer_height = {layer_height}
+infill_density = {infill_density}
+support_material = {support_material}
+"""
+
 @app.route("/upload", methods=["POST"])
 def upload_model():
     # Get the model file from the request
@@ -35,13 +45,17 @@ def slice_model():
     # Get the print parameters from the request
     print_params = request.get_json()
 
+    # Generate the config.ini file
+    config_file = os.path.join(TMP_DIR, "config.ini")
+    with open(config_file, "w") as f:
+        f.write(CONFIG_TEMPLATE.format(**print_params))
+
     # Create a dictionary of Slic3r command-line arguments
     slic3r_args = {
         "input": os.path.join(TMP_DIR, "input.stl"),
         "output": os.path.join(TMP_DIR, "output.gcode"),
-        "config": "/app/Slic3r/config.ini",  # assumes config.ini is in the Slic3r container
+        "config": config_file,
     }
-    slic3r_args.update(print_params)
 
     # Run the Slic3r command using the Docker image
     slic3r_cmd = f"slic3r --{'--'.join(f'{k}={v}' for k, v in slic3r_args.items())}"
