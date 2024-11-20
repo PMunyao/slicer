@@ -1,6 +1,8 @@
 from flask import Flask, request, jsonify
 import subprocess
 import os
+import trimesh
+from stl import mesh
 
 app = Flask(__name__)
 
@@ -12,6 +14,16 @@ BAMBU_IMAGE = "bambu-cli:latest"
 
 # Set the path to the temporary directory for storing model files
 TMP_DIR = "/tmp"
+
+# Default config.ini template
+CONFIG_TEMPLATE = """
+[general]
+bed_temperature = {bed_temperature}
+extrusion_temperature = {extrusion_temperature}
+layer_height = {layer_height}
+infill_density = {infill_density}
+support_material = {support_material}
+"""
 
 @app.route("/upload", methods=["POST"])
 def upload_model():
@@ -59,20 +71,20 @@ def slice_model():
 
 @app.route("/print", methods=["POST"])
 def print_model():
-    # Get the G-code from the request
-    gcode = request.get_json()["gcode"]
+    # Get the sliced G-code from the request
+    gcode = request.json["gcode"]
 
-    # Save the G-code to a temporary file
-    gcode_file = os.path.join(TMP_DIR, "output.gcode")
-    with open(gcode_file, "w") as f:
+    # Save the G-code file to a temporary directory
+    gcode_path = os.path.join(TMP_DIR, "output.gcode")
+    with open(gcode_path, "w") as f:
         f.write(gcode)
 
     # Run the Bambu CLI command using the Docker image
-    bambu_cmd = f"bambu-cli print {gcode_file}"
+    bambu_cmd = f"bambu-cli print {gcode_path}"
     subprocess.run(["docker", "run", "-v", f"{TMP_DIR}:/tmp", BAMBU_IMAGE, "bash", "-c", bambu_cmd])
 
-    # Return a success response
-    return jsonify({"message": "Print job sent successfully"})
+    # Return a success message
+    return jsonify({"message": "Print job sent to printer"})
 
 if __name__ == "__main__":
     app.run(debug=True, host="0.0.0.0", port=5001)
