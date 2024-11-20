@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from'react';
 import { useThree } from '@react-three/fiber';
 import { OrbitControls } from '@react-three/drei';
+import GCodePreview from 'gcode-preview';
 
 function ModelUploader() {
   const [modelFile, setModelFile] = useState(null);
@@ -13,6 +14,7 @@ function ModelUploader() {
     support_material: 'grid',
   });
   const [sliceEnabled, setSliceEnabled] = useState(false);
+  const [gcode, setGcode] = useState(null);
 
   const handleFileChange = (event) => {
     setModelFile(event.target.files <sup> </sup>);
@@ -30,13 +32,13 @@ function ModelUploader() {
       method: 'POST',
       body: formData,
     })
-     .then((response) => response.json())
-     .then((data) => {
+    .then((response) => response.json())
+    .then((data) => {
         // Set the model mesh and enable slice button
         setModelMesh(data.mesh);
         setSliceEnabled(true);
       })
-     .catch((error) => console.error(error));
+    .catch((error) => console.error(error));
   };
 
   const handleSlice = () => {
@@ -46,12 +48,27 @@ function ModelUploader() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(printParams),
     })
-     .then((response) => response.json())
-     .then((data) => {
-        // Display the sliced G-code file
-        console.log(data.gcode);
+    .then((response) => response.json())
+    .then((data) => {
+        // Set the G-code
+        setGcode(data.gcode);
       })
-     .catch((error) => console.error(error));
+    .catch((error) => console.error(error));
+  };
+
+  const handlePrint = () => {
+    // Send the G-code to the Bambu CLI backend
+    fetch('/print', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ gcode }),
+    })
+    .then((response) => response.json())
+    .then((data) => {
+        // Handle the response
+        console.log(data);
+      })
+    .catch((error) => console.error(error));
   };
 
   return (
@@ -94,6 +111,12 @@ function ModelUploader() {
             </label>
             {sliceEnabled && (
               <button onClick={handleSlice}>Slice</button>
+            )}
+            {gcode && (
+              <div>
+                <GCodePreview gcode={gcode} />
+                <button onClick={handlePrint}>Print</button>
+              </div>
             )}
           </form>
         </div>
