@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from'react';
 import { useThree } from '@react-three/fiber';
 import { OrbitControls } from '@react-three/drei';
-import GCodePreview from 'gcode-preview';
+import { GCodePreview } from 'gcode-preview';
 
 function ModelUploader() {
   const [modelFile, setModelFile] = useState(null);
@@ -17,7 +17,7 @@ function ModelUploader() {
   const [gcode, setGcode] = useState(null);
 
   const handleFileChange = (event) => {
-    setModelFile(event.target.files <sup> </sup>);
+    setModelFile(event.target.files[0]);
   };
 
   const handlePrintParamChange = (event) => {
@@ -50,14 +50,14 @@ function ModelUploader() {
     })
     .then((response) => response.json())
     .then((data) => {
-        // Set the G-code
+        // Set the sliced G-code
         setGcode(data.gcode);
       })
     .catch((error) => console.error(error));
   };
 
   const handlePrint = () => {
-    // Send the G-code to the Bambu CLI backend
+    // Send the sliced G-code to the Bambu CLI backend
     fetch('/print', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -65,7 +65,6 @@ function ModelUploader() {
     })
     .then((response) => response.json())
     .then((data) => {
-        // Handle the response
         console.log(data);
       })
     .catch((error) => console.error(error));
