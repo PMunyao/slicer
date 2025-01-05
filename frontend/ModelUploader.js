@@ -34,10 +34,24 @@ function ModelUploader() {
   const [modelFile, setModelFile] = useState(null);
   const [modelUrl, setModelUrl] = useState(null);
   const [error, setError] = useState(null);
+  const [printParams, setPrintParams] = useState({
+    layerHeight: '',
+    printSpeed: '',
+    temperature: '',
+  });
+  const [slicedFileUrl, setSlicedFileUrl] = useState(null);
 
   const handleFileChange = (e) => {
     const file = e.target.files[0];
     setModelFile(file);
+  };
+
+  const handlePrintParamChange = (e) => {
+    const { name, value } = e.target;
+    setPrintParams((prevParams) => ({
+      ...prevParams,
+      [name]: value,
+    }));
   };
 
   const handleUpload = async () => {
@@ -57,7 +71,7 @@ function ModelUploader() {
 
       if (response.ok) {
         const data = await response.json();
-        setModelUrl(data.mesh_url); // Backend provides mesh URL
+        setModelUrl(data.mesh_url);
         setError(null);
       } else {
         const errData = await response.json();
@@ -66,6 +80,32 @@ function ModelUploader() {
     } catch (err) {
       console.error("Error uploading file:", err);
       setError("An unexpected error occurred.");
+    }
+  };
+
+  const handleSlice = async () => {
+    try {
+      const response = await fetch("http://127.0.0.1:5000/slice", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          config: printParams,
+          stl_url: modelUrl,
+        }),
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setSlicedFileUrl(data.gcode_url);
+      } else {
+        const errData = await response.json();
+        setError(errData.error || "Slicing failed.");
+      }
+    } catch (err) {
+      console.error("Error slicing file:", err);
+      setError("An unexpected error occurred during slicing.");
     }
   };
 
@@ -89,6 +129,53 @@ function ModelUploader() {
           </Canvas>
         </div>
       )}
+
+      <div style={{ marginTop: "20px" }}>
+        <h2>Print Parameters</h2>
+        <form>
+          <label>
+            Layer Height:
+            <input
+              type="text"
+              name="layerHeight"
+              value={printParams.layerHeight}
+              onChange={handlePrintParamChange}
+            />
+          </label>
+          <br />
+          <label>
+            Print Speed:
+            <input
+              type="text"
+              name="printSpeed"
+              value={printParams.printSpeed}
+              onChange={handlePrintParamChange}
+            />
+          </label>
+          <br />
+          <label>
+            Temperature:
+            <input
+              type="text"
+              name="temperature"
+              value={printParams.temperature}
+              onChange={handlePrintParamChange}
+            />
+          </label>
+        </form>
+        <button onClick={handleSlice} disabled={!modelUrl}>
+          Slice Model
+        </button>
+
+        {slicedFileUrl && (
+          <div>
+            <h3>Download Gcode File</h3>
+            <a href={slicedFileUrl} download>
+              Download
+            </a>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
