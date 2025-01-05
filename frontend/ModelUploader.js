@@ -1,123 +1,92 @@
-import React, { useState, useEffect } from'react';
-import { useThree } from '@react-three/fiber';
+import React, { useState, useEffect } from 'react';
+import { Canvas } from '@react-three/fiber';
 import { OrbitControls } from '@react-three/drei';
-import { GCodePreview } from 'gcode-preview';
+import { STLLoader } from 'three/examples/jsm/loaders/STLLoader';
+import * as THREE from 'three';
+
+function STLViewer({ url }) {
+  const [geometry, setGeometry] = useState(null);
+
+  useEffect(() => {
+    const loader = new STLLoader();
+    loader.load(
+      url,
+      (geometry) => {
+        setGeometry(geometry);
+      },
+      undefined,
+      (error) => {
+        console.error("Error loading STL file:", error);
+      }
+    );
+  }, [url]);
+
+  if (!geometry) return null;
+
+  return (
+    <mesh geometry={geometry}>
+      <meshStandardMaterial color="gray" />
+    </mesh>
+  );
+}
 
 function ModelUploader() {
   const [modelFile, setModelFile] = useState(null);
-  const [modelMesh, setModelMesh] = useState(null);
-  const [printParams, setPrintParams] = useState({
-    bed_temperature: 60,
-    extrusion_temperature: 200,
-    layer_height: 0.2,
-    infill_density: 20,
-    support_material: 'grid',
-  });
-  const [sliceEnabled, setSliceEnabled] = useState(false);
-  const [gcode, setGcode] = useState(null);
+  const [modelUrl, setModelUrl] = useState(null);
+  const [error, setError] = useState(null);
 
-  const handleFileChange = (event) => {
-    setModelFile(event.target.files[0]);
+  const handleFileChange = (e) => {
+    const file = e.target.files[0];
+    setModelFile(file);
   };
 
-  const handlePrintParamChange = (event) => {
-    setPrintParams((prevParams) => ({...prevParams, [event.target.name]: event.target.value }));
-  };
+  const handleUpload = async () => {
+    if (!modelFile) {
+      setError("No file selected");
+      return;
+    }
 
-  const handleUpload = () => {
-    // Upload the model file to the Flask backend
     const formData = new FormData();
-    formData.append('model', modelFile);
-    fetch('/upload', {
-      method: 'POST',
-      body: formData,
-    })
-    .then((response) => response.json())
-    .then((data) => {
-        // Set the model mesh and enable slice button
-        setModelMesh(data.mesh);
-        setSliceEnabled(true);
-      })
-    .catch((error) => console.error(error));
-  };
+    formData.append("file", modelFile);
 
-  const handleSlice = () => {
-    // Send the print parameters to the Flask backend
-    fetch('/slice', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(printParams),
-    })
-    .then((response) => response.json())
-    .then((data) => {
-        // Set the sliced G-code
-        setGcode(data.gcode);
-      })
-    .catch((error) => console.error(error));
-  };
+    try {
+      const response = await fetch("http://127.0.0.1:5000/upload", {
+        method: "POST",
+        body: formData,
+      });
 
-  const handlePrint = () => {
-    // Send the sliced G-code to the Bambu CLI backend
-    fetch('/print', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ gcode }),
-    })
-    .then((response) => response.json())
-    .then((data) => {
-        console.log(data);
-      })
-    .catch((error) => console.error(error));
+      if (response.ok) {
+        const data = await response.json();
+        setModelUrl(data.mesh_url); // Backend provides mesh URL
+        setError(null);
+      } else {
+        const errData = await response.json();
+        setError(errData.error || "Upload failed.");
+      }
+    } catch (err) {
+      console.error("Error uploading file:", err);
+      setError("An unexpected error occurred.");
+    }
   };
 
   return (
     <div>
-      <input type="file" onChange={handleFileChange} />
-      {modelFile && (
-        <button onClick={handleUpload}>Upload and View</button>
-      )}
-      {modelMesh && (
-        <div>
-          <OrbitControls ref={modelMesh} position={[0, 0, 0]}>
-            <mesh ref={modelMesh}>
-              <boxGeometry args={[1, 1, 1]} />
-              <meshBasicMaterial color="hotpink" />
-            </mesh>
-          </OrbitControls>
-          <form>
-            <label>
-              Bed Temperature:
-              <input type="number" name="bed_temperature" value={printParams.bed_temperature} onChange={handlePrintParamChange} />
-            </label>
-            <label>
-              Extrusion Temperature:
-              <input type="number" name="extrusion_temperature" value={printParams.extrusion_temperature} onChange={handlePrintParamChange} />
-            </label>
-            <label>
-              Layer Height:
-              <input type="number" name="layer_height" value={printParams.layer_height} onChange={handlePrintParamChange} />
-            </label>
-            <label>
-              Infill Density:
-              <input type="number" name="infill_density" value={printParams.infill_density} onChange={handlePrintParamChange} />
-            </label>
-            <label>
-              Support Material:
-              <select name="support_material" value={printParams.support_material} onChange={handlePrintParamChange}>
-                <option value="grid">Grid</option>
-                <option value="lines">Lines</option>
-              </select>
-            </label>
-            {sliceEnabled && (
-              <button onClick={handleSlice}>Slice</button>
-            )}
-            {gcode && (
-              <div>
-                <GCodePreview gcode={gcode} />
-                <button onClick={handlePrint}>Print</button>
-              </div>
-            )}
-          </form>
+      <h1>3D Model Uploader</h1>
+      <input type="file" accept=".stl" onChange={handleFileChange} />
+      <button onClick={handleUpload} disabled={!modelFile}>
+        Upload and View
+      </button>
+      {error && <p style={{ color: 'red' }}>{error}</p>}
+
+      {modelUrl && (
+        <div style={{ width: "100%", height: "500px", marginTop: "20px" }}>
+          <h2>STL Viewer</h2>
+          <Canvas>
+            <ambientLight />
+            <pointLight position={[10, 10, 10]} />
+            <OrbitControls />
+            <STLViewer url={modelUrl} />
+          </Canvas>
         </div>
       )}
     </div>
