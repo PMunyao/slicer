@@ -1,90 +1,51 @@
 from flask import Flask, request, jsonify
-import subprocess
 import os
-import trimesh
-from stl import mesh
+from stl import Mesh
+from flask_cors import CORS
 
 app = Flask(__name__)
+CORS(app)
 
-# Set the path to the Slic3r Docker image
-SLICER_IMAGE = "slic3r:latest"
-
-# Set the path to the Bambu CLI Docker image
-BAMBU_IMAGE = "bambu-cli:latest"
-
-# Set the path to the temporary directory for storing model files
 TMP_DIR = "/tmp"
 
-# Default config.ini template
-CONFIG_TEMPLATE = """
-[general]
-bed_temperature = {bed_temperature}
-extrusion_temperature = {extrusion_temperature}
-layer_height = {layer_height}
-infill_density = {infill_density}
-support_material = {support_material}
-"""
+# Ensure TMP_DIR exists
+if not os.path.exists(TMP_DIR):
+    os.makedirs(TMP_DIR)
 
-@app.route("/upload", methods=["POST"])
+@app.route('/upload', methods=['POST'])
 def upload_model():
-    # Get the model file from the request
-    model_file = request.files["model"]
+    try:
+        # Check if a file is in the request
+        if 'file' not in request.files:
+            return jsonify({"error": "No file part in the request."}), 400
 
-    # Save the model file to a temporary directory
-    model_path = os.path.join(TMP_DIR, model_file.filename)
-    model_file.save(model_path)
+        file = request.files['file']
+        if file.filename == '':
+            return jsonify({"error": "No file selected for upload."}), 400
 
-    # Load the STL mesh
-    mesh = trimesh.load(model_path)
+        # Save the STL file
+        file_path = os.path.join(TMP_DIR, file.filename)
+        file.save(file_path)
 
-    # Get the mesh data
-    mesh_data = mesh.export('obj')
+        # Optionally process the STL file (e.g., validate or analyze it)
+        mesh = Mesh.from_file(file_path)
 
-    # Return the mesh data
-    return jsonify({"mesh": mesh_data})
+        # Return the uploaded file path for the frontend to fetch
+        return jsonify({"mesh_url": f"http://127.0.0.1:5000/uploads/{file.filename}"})
+    except Exception as e:
+        print(f"Error processing STL file: {e}")
+        return jsonify({"error": str(e)}), 500
 
-@app.route("/slice", methods=["POST"])
-def slice_model():
-    # Get the print parameters from the request
-    print_params = request.get_json()
-
-    # Generate the config.ini file
-    config_file = os.path.join(TMP_DIR, "config.ini")
-    with open(config_file, "w") as f:
-        f.write(CONFIG_TEMPLATE.format(**print_params))
-
-    # Create a dictionary of Slic3r command-line arguments
-    slic3r_args = {
-        "input": os.path.join(TMP_DIR, "input.stl"),
-        "output": os.path.join(TMP_DIR, "output.gcode"),
-        "config": config_file,
-    }
-
-    # Run the Slic3r command using the Docker image
-    slic3r_cmd = f"slic3r --{'--'.join(f'{k}={v}' for k, v in slic3r_args.items())}"
-    subprocess.run(["docker", "run", "-v", f"{TMP_DIR}:/tmp", SLICER_IMAGE, "bash", "-c", slic3r_cmd])
-
-    # Return the sliced G-code file
-    with open(os.path.join(TMP_DIR, "output.gcode"), "r") as f:
-        gcode = f.read()
-    return jsonify({"gcode": gcode})
-
-@app.route("/print", methods=["POST"])
-def print_model():
-    # Get the sliced G-code from the request
-    gcode = request.json["gcode"]
-
-    # Save the G-code file to a temporary directory
-    gcode_path = os.path.join(TMP_DIR, "output.gcode")
-    with open(gcode_path, "w") as f:
-        f.write(gcode)
-
-    # Run the Bambu CLI command using the Docker image
-    bambu_cmd = f"bambu-cli print {gcode_path}"
-    subprocess.run(["docker", "run", "-v", f"{TMP_DIR}:/tmp", BAMBU_IMAGE, "bash", "-c", bambu_cmd])
-
-    # Return a success message
-    return jsonify({"message": "Print job sent to printer"})
+# Serve uploaded files
+@app.route('/uploads/<filename>', methods=['GET'])
+def serve_uploaded_file(filename):
+    file_path = os.path.join(TMP_DIR, filename)
+    if os.path.exists(file_path):
+        return open(file_path, "rb").read(), 200, {
+            'Content-Type': 'application/vnd.ms-pkistl',
+            'Content-Disposition': f'attachment; filename="{filename}"'
+        }
+    return jsonify({"error": "File not found"}), 404
 
 if __name__ == "__main__":
-    app.run(debug=True, host="0.0.0.0", port=5001)
+    app.run(debug=True, host="0.0.0.0", port=5000)
